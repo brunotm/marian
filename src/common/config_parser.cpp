@@ -504,6 +504,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Port number for web socket server");
   cli.add_nondefault<bool>("--mmap",
       "Memory map models");
+  cli.add_nondefault<int>("--mkl-threads",
+      "Number of MKL thread");
   // add ULR settings
   addSuboptionsULR(cli);
 

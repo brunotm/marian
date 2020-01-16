@@ -4,6 +4,10 @@
 #include "common/timer.h"
 #include "common/utils.h"
 
+#ifdef MKL_FOUND
+#include "mkl.h"
+#endif
+
 #include "3rd_party/simple-websocket-server/server_ws.hpp"
 
 typedef SimpleWeb::SocketServer<SimpleWeb::WS> WSServer;
@@ -13,6 +17,11 @@ int main(int argc, char **argv) {
 
   // Initialize translation task
   auto options = parseOptions(argc, argv, cli::mode::translation, true);
+
+  #ifdef MKL_FOUND
+    mkl_set_num_threads(options->get<int>("mkl-threads", 1));
+  #endif
+
   auto task = New<TranslateService<BeamSearch>>(options);
 
   // Initialize web server
