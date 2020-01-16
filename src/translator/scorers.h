@@ -91,10 +91,13 @@ public:
 
   virtual void init(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());
-    if(ptr_)
+    if(ptr_) {
+      LOG(debug, "Scorer initializing graph from {}", ptr_);
       encdec_->mmap(graph, ptr_);
-    else
+     } else {
+      LOG(debug, "Scorer initializing graph from {}", fname_);
       encdec_->load(graph, fname_);
+     }
   }
 
   virtual void clear(Ptr<ExpressionGraph> graph) override {

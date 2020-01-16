@@ -40,6 +40,8 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
     items[i].type = (Type)headers[i].type;
     items[i].name = get<char>(current, headers[i].nameLength);
     items[i].mapped = mapped;
+
+    LOG(debug, "Loaded header: {}, type: {}, mapped: {}", items[i].type, items[i].name, items[i].mapped);
   }
 
   for(int i = 0; i < numHeaders; ++i) {
@@ -114,7 +116,7 @@ void saveItems(const std::string& fileName,
     headers.push_back(Header{item.name.size() + 1,
                              (size_t)item.type,
                              item.shape.size(),
-                             item.size()});
+                             item.bytes.size()}); // byte align for saving
   }
 
   size_t headerSize = headers.size();
@@ -142,7 +144,7 @@ void saveItems(const std::string& fileName,
 
   // Write out all values
   for(const auto& item : items) {
-    pos += out.write(item.data(), item.size());
+    pos += out.write(item.data(), item.bytes.size());  // byte align for saving
   }
 }
 

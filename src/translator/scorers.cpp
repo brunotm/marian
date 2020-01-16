@@ -90,6 +90,8 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<c
   for(auto ptr : ptrs) {
     std::string fname = "F" + std::to_string(i);
 
+    LOG(debug, "Creating Scorer with name: {}", fname);
+
     // load options specific for the scorer
     auto modelOptions = New<Options>(options->clone());
     try {

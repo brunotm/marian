@@ -472,6 +472,7 @@ public:
       if(pName.substr(0, 8) == "special:")
         continue;
       param(pName, item.shape, inits::from_item(item));
+      LOG(debug,"Expression graph: loaded param {}", pName);
     }
     if(markReloaded)
       setReloaded(true);

@@ -13,6 +13,12 @@
 #include "models/model_task.h"
 #include "translator/scorers.h"
 
+// Memory mapping
+#include <iostream>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
 namespace marian {
 
 template <class Search>
@@ -142,12 +148,19 @@ private:
 
   size_t numDevices_;
 
+  // Keep references to file descriptors and mapped regions
+  std::vector<int> fds_;
+  std::vector<const void*> mmaps_;
+
 public:
   virtual ~TranslateService() {}
 
   TranslateService(Ptr<Options> options) : options_(options) { init(); }
 
   void init() override {
+    LOG(debug, "Initializing TranslateService");
+
+    LOG(debug, "Initializing Vocabs");
     // initialize vocabs
     options_->set("inference", true);
 
@@ -167,7 +180,39 @@ public:
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
 
+    // Memory maping code
+    auto mapModels = options_->get<bool>("mmap", false);
+    if (mapModels) {
+
+      auto models = options_->get<std::vector<std::string>>("models");
+
+      for(auto model : models) {
+        marian::filesystem::Path modelPath(model);
+        ABORT_IF(modelPath.extension() != marian::filesystem::Path(".bin"), "Non-binary models cannot be mapped");
+
+        int fd = open(model.c_str(), O_RDONLY);
+        ABORT_IF(fd < 0, "Could not open model file");
+
+        auto file_size = lseek(fd, 0, SEEK_END);
+        lseek(fd, 0, SEEK_SET);
+
+        // struct stat sb;
+        // ABORT_IF(fstat(fd, &sb) == -1, "Could not fstat model file fd");
+        // auto file_size = sb.st_size;
+
+        auto pa_offset = 0 & ~(sysconf(_SC_PAGE_SIZE) - 1);
+        const char* ptr = static_cast<const char*>(mmap(NULL, file_size - pa_offset, PROT_READ, MAP_SHARED, fd, pa_offset));
+        ABORT_IF(ptr == MAP_FAILED, "Could not mmap model: MAP_FAILED");
+        ABORT_IF(!ptr, "Could not mmap model: null pointer");
+        LOG(debug, "Memory mapping model File {},  FD: {}, SZ: {}, PTR: {}", model.c_str(), fd, file_size, ptr);
+
+        fds_.push_back(fd);
+        mmaps_.push_back(ptr);
+      }
+    }
+
     // initialize scorers
+    LOG(debug, "Creating ExpressionGraph");
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
       graph->setDevice(device);
@@ -175,10 +220,22 @@ public:
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
 
-      auto scorers = createScorers(options_);
+      LOG(debug, "Creating Scorer");
+      std::vector<Ptr<Scorer>> scorers;
+
+      if (mapModels) {
+        LOG(debug, "Creating from MMAP");
+        scorers = createScorers(options_, mmaps_);
+      } else {
+        LOG(debug, "Creating Scorer from file");
+        scorers = createScorers(options_);
+      }
+
+      LOG(debug, "Initializing ExpressionGraph with Scorer");
       for(auto scorer : scorers)
         scorer->init(graph);
       scorers_.push_back(scorers);
+      graph->forward();
     }
   }
 
@@ -200,7 +257,6 @@ public:
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local std::vector<Ptr<Scorer>> scorers;
-
           if(!graph) {
             graph = graphs_[id % numDevices_];
             scorers = scorers_[id % numDevices_];
